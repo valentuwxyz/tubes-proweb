@@ -82,6 +82,47 @@ function normalizeGalleryList(array $kosRow, ?string $photoColumn, bool $hasGall
     return $list;
 }
 
+function normalizeCampusList(array $checkedCampuses, string $customCampusRaw): array
+{
+    $result = [];
+    foreach ($checkedCampuses as $item) {
+        $clean = trim((string)preg_replace('/\s+/', ' ', (string)$item));
+        if ($clean !== '') {
+            $exists = false;
+            foreach ($result as $existing) {
+                if (strcasecmp($existing, $clean) === 0) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if (!$exists) {
+                $result[] = $clean;
+            }
+        }
+    }
+
+    if ($customCampusRaw !== '') {
+        $parts = explode(',', $customCampusRaw);
+        foreach ($parts as $part) {
+            $clean = trim((string)preg_replace('/\s+/', ' ', $part));
+            if ($clean !== '') {
+                $exists = false;
+                foreach ($result as $existing) {
+                    if (strcasecmp($existing, $clean) === 0) {
+                        $exists = true;
+                        break;
+                    }
+                }
+                if (!$exists) {
+                    $result[] = $clean;
+                }
+            }
+        }
+    }
+
+    return $result;
+}
+
 $errorMsg = '';
 $presetCampuses = ['USU', 'Unimed', 'Polmed'];
 $electricityPresets = ['Token Sendiri', 'Sudah Termasuk Biaya Kos', 'Iuran Bulanan', 'Bayar Sendiri'];
@@ -90,10 +131,10 @@ $securityPresets = ['CCTV 24 Jam', 'Penjaga Kos & CCTV', 'Gerbang Terkunci / Aks
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim((string)($_POST['name'] ?? ''));
-    $campusSelect = trim((string)($_POST['campus_select'] ?? 'USU'));
+    $postedCampusList = isset($_POST['campus_list']) && is_array($_POST['campus_list']) ? $_POST['campus_list'] : [];
     $campusCustom = trim((string)($_POST['campus_custom'] ?? ''));
-    $campusName = ($campusSelect === '__other__') ? $campusCustom : $campusSelect;
-    $campusName = trim((string)preg_replace('/\s+/', ' ', $campusName));
+    $campusArr = normalizeCampusList($postedCampusList, $campusCustom);
+    $campusName = implode(', ', $campusArr);
 
     $elecSelect = trim((string)($_POST['electricity_select'] ?? 'Token Sendiri'));
     $elecCustom = trim((string)($_POST['electricity_custom'] ?? ''));
@@ -124,7 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($name === '' || $price <= 0) {
         $errorMsg = 'Nama kos dan tarif per bulan wajib diisi dengan benar.';
     } elseif ($hasCampusCol && $campusName === '') {
-        $errorMsg = 'Nama kampus terdekat wajib diisi.';
+        $errorMsg = 'Minimal satu nama kampus terdekat wajib dipilih atau diisi.';
     }
 
     // Proses upload banyak foto kos jika dipilih dari galeri
@@ -347,13 +388,31 @@ $currentCampus = $hasCampusCol ? trim((string)($kos['campus_name'] ?? '')) : '';
 if ($currentCampus === '') {
     $currentCampus = 'USU';
 }
-$isPresetCampus = in_array($currentCampus, $presetCampuses, true);
-if (isset($_POST['campus_select'])) {
-    $selCampusSelect = (string)$_POST['campus_select'];
+$currentCampusParts = array_values(array_filter(array_map('trim', explode(',', $currentCampus))));
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $selCampusList = isset($_POST['campus_list']) && is_array($_POST['campus_list'])
+        ? array_map('strval', $_POST['campus_list'])
+        : [];
     $selCampusCustom = (string)($_POST['campus_custom'] ?? '');
 } else {
-    $selCampusSelect = $isPresetCampus ? $currentCampus : '__other__';
-    $selCampusCustom = $isPresetCampus ? '' : $currentCampus;
+    $selCampusList = [];
+    $customParts = [];
+    foreach ($currentCampusParts as $cPart) {
+        $matchedPreset = null;
+        foreach ($presetCampuses as $pCam) {
+            if (strcasecmp($cPart, $pCam) === 0) {
+                $matchedPreset = $pCam;
+                break;
+            }
+        }
+        if ($matchedPreset !== null) {
+            $selCampusList[] = $matchedPreset;
+        } else {
+            $customParts[] = $cPart;
+        }
+    }
+    $selCampusCustom = implode(', ', $customParts);
 }
 
 $currentElec = trim((string)($kos['electricity'] ?? ''));
@@ -458,17 +517,20 @@ $currentSecurity = $hasSecurityCol && trim((string)($kos['security'] ?? '')) !==
                            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                 </div>
                 <div>
-                    <label class="font-bold text-slate-700 block mb-1">Nama Kampus Terdekat *</label>
-                    <select id="campusSelect" name="campus_select" onchange="toggleCustomInput('campusSelect', 'campusCustomInput')" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none">
-                        <option value="USU" <?= $selCampusSelect === 'USU' ? 'selected' : '' ?>>USU</option>
-                        <option value="Unimed" <?= $selCampusSelect === 'Unimed' ? 'selected' : '' ?>>Unimed</option>
-                        <option value="Polmed" <?= $selCampusSelect === 'Polmed' ? 'selected' : '' ?>>Polmed</option>
-                        <option value="__other__" <?= $selCampusSelect === '__other__' ? 'selected' : '' ?>>Kampus Lainnya (Ketik Sendiri)...</option>
-                    </select>
-                    <input id="campusCustomInput" type="text" name="campus_custom"
+                    <label class="font-bold text-slate-700 block mb-1">Nama Kampus Terdekat (Bisa lebih dari 1) *</label>
+                    <div class="flex flex-wrap gap-1.5">
+                        <?php foreach ($presetCampuses as $pCampus): ?>
+                            <?php $isChecked = in_array($pCampus, $selCampusList, true); ?>
+                            <label class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-teal-50/50 cursor-pointer font-semibold text-slate-700">
+                                <input type="checkbox" name="campus_list[]" value="<?= htmlspecialchars($pCampus) ?>" <?= $isChecked ? 'checked' : '' ?> class="accent-teal-600 rounded">
+                                <span><?= htmlspecialchars($pCampus) ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <input type="text" name="campus_custom"
                         value="<?= htmlspecialchars($selCampusCustom) ?>"
-                        placeholder="Ketik nama kampus, misal: UMSU, UINSU, ITM"
-                        class="<?= $selCampusSelect === '__other__' ? '' : 'hidden' ?> mt-2 w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                        placeholder="Kampus lain / tambahan (pisahkan koma jika >1)"
+                        class="mt-2 w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="font-bold text-slate-700 block mb-1">Tipe Gender *</label>

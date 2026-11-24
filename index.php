@@ -191,9 +191,21 @@ if ($result) {
 
 $campusOptions = [];
 foreach ($kosList as $kItem) {
-    $cName = trim((string)($kItem['campusName'] ?? ''));
-    if ($cName !== '' && !in_array($cName, $campusOptions, true)) {
-        $campusOptions[] = $cName;
+    $rawCampuses = explode(',', (string)($kItem['campusName'] ?? ''));
+    foreach ($rawCampuses as $cPart) {
+        $cName = trim($cPart);
+        if ($cName !== '') {
+            $alreadyExists = false;
+            foreach ($campusOptions as $existingOpt) {
+                if (strcasecmp($existingOpt, $cName) === 0) {
+                    $alreadyExists = true;
+                    break;
+                }
+            }
+            if (!$alreadyExists) {
+                $campusOptions[] = $cName;
+            }
+        }
     }
 }
 natcasesort($campusOptions);
@@ -482,9 +494,9 @@ if ($user && is_array($user)) {
                     <div class="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                         <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
                             <div>
-                                <div class="flex flex-wrap items-center gap-2 mb-1">
-                                    <span id="detailCampusBadge" class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                                        <i class="fa-solid fa-graduation-cap"></i> <span id="detailCampusText">USU</span>
+                                <div id="detailCampusBadgesWrap" class="flex flex-wrap items-center gap-1.5 mb-1">
+                                    <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
+                                        <i class="fa-solid fa-graduation-cap"></i> <span>USU</span>
                                     </span>
                                 </div>
                                 <h1 id="detailTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900">Nama Kos</h1>
@@ -772,6 +784,23 @@ if ($user && is_array($user)) {
                 .replace(/'/g, '&#39;');
         }
 
+        function splitCampusList(rawCampus) {
+            return String(rawCampus || '')
+                .split(',')
+                .map(c => c.trim())
+                .filter(c => c !== '');
+        }
+
+        function renderCampusBadgesHtml(rawCampus) {
+            const list = splitCampusList(rawCampus);
+            const items = list.length > 0 ? list : ['Kampus'];
+            return items.map(c => `
+                <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    <i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(c)}
+                </span>
+            `).join(' ');
+        }
+
         function toggleNavMenu(event) {
             if (event) event.stopPropagation();
             const dropdown = document.getElementById('navDropdownList');
@@ -850,10 +879,10 @@ if ($user && is_array($user)) {
             return kosData.filter(item => {
                 const matchType = currentTypeFilter === 'All' || item.type === currentTypeFilter;
                 const matchPrice = item.price <= maxPriceFilter;
-                const itemCampus = String(item.campusName || '').trim();
-                const matchDropdown = currentCampusDropdown === 'All' || itemCampus.toLowerCase() === currentCampusDropdown.toLowerCase();
+                const itemCampuses = splitCampusList(item.campusName).map(c => c.toLowerCase());
+                const matchDropdown = currentCampusDropdown === 'All' || itemCampuses.includes(currentCampusDropdown.toLowerCase());
 
-                const haystack = `${itemCampus} ${item.name || ''} ${item.ownerName || ''} ${item.address || ''} ${item.distance || ''}`.toLowerCase();
+                const haystack = `${item.campusName || ''} ${item.name || ''} ${item.ownerName || ''} ${item.address || ''} ${item.distance || ''}`.toLowerCase();
                 const matchSearch = q === '' || haystack.includes(q);
 
                 return matchType && matchPrice && matchDropdown && matchSearch;
@@ -901,7 +930,7 @@ if ($user && is_array($user)) {
                 };
 
                 const safeName = escapeHtml(item.name);
-                const safeCampus = escapeHtml(item.campusName || 'Kampus');
+                const campusBadgesHtml = renderCampusBadgesHtml(item.campusName);
                 const safeType = escapeHtml(item.type);
                 const safeDistance = escapeHtml(item.distance);
                 const safePriceFormatted = escapeHtml(item.priceFormatted);
@@ -924,9 +953,9 @@ if ($user && is_array($user)) {
                         <div>
                             <div class="flex items-start justify-between gap-2">
                                 <div class="min-w-0">
-                                    <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full mb-1">
-                                        <i class="fa-solid fa-graduation-cap"></i> ${safeCampus}
-                                    </span>
+                                    <div class="flex flex-wrap items-center gap-1 mb-1">
+                                        ${campusBadgesHtml}
+                                    </div>
                                     <h3 class="font-bold text-slate-900 text-sm sm:text-base leading-snug">${safeName}</h3>
                                 </div>
                                 <div class="flex items-center gap-1 shrink-0">
@@ -981,9 +1010,8 @@ if ($user && is_array($user)) {
             const selectEl = document.getElementById('campusSelectFilter');
             const inputEl = document.getElementById('campusSearchInput');
             if (selectEl) {
-                const exists = Array.from(selectEl.options).some(opt => opt.value.toLowerCase() === campusLabel.toLowerCase());
-                if (exists) {
-                    const matchedOpt = Array.from(selectEl.options).find(opt => opt.value.toLowerCase() === campusLabel.toLowerCase());
+                const matchedOpt = Array.from(selectEl.options).find(opt => opt.value.toLowerCase() === campusLabel.toLowerCase());
+                if (matchedOpt) {
                     selectEl.value = matchedOpt.value;
                     currentCampusDropdown = matchedOpt.value;
                     if (inputEl) inputEl.value = '';
@@ -1114,11 +1142,11 @@ if ($user && is_array($user)) {
             const campusLabel = kos.campusName || 'Kampus';
             const bcCampus = document.getElementById('detailBreadcrumbCampus');
             const bcTitle = document.getElementById('detailBreadcrumbTitle');
-            const campusText = document.getElementById('detailCampusText');
+            const badgesWrap = document.getElementById('detailCampusBadgesWrap');
             const titleEl = document.getElementById('detailTitle');
             if (bcCampus) bcCampus.innerText = campusLabel;
             if (bcTitle) bcTitle.innerText = kos.name;
-            if (campusText) campusText.innerText = campusLabel;
+            if (badgesWrap) badgesWrap.innerHTML = renderCampusBadgesHtml(campusLabel);
             if (titleEl) titleEl.innerText = kos.name;
 
             renderOwnerProfileInDetail(kos);

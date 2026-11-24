@@ -359,7 +359,7 @@ if ($user && is_array($user)) {
     </header>
 
     <!-- CONTAINER TAMPILAN KATALOG (PAGE 1) -->
-    <div id="catalogPage" class="flex-1 w-full">
+    <!-- <div id="catalogPage" class="flex-1 w-full">
         <section class="bg-gradient-to-br from-teal-950 via-teal-900 to-slate-900 text-white py-10 sm:py-14 px-4 relative overflow-hidden">
             <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]"></div>
             <div class="max-w-4xl mx-auto text-center space-y-3 sm:space-y-4 relative z-10">
@@ -373,7 +373,7 @@ if ($user && is_array($user)) {
                     Cari kos berdasarkan nama kampus seperti USU, Unimed, Polmed, atau kampus lain yang sudah didaftarkan pemilik.
                 </p>
             </div>
-        </section>
+        </section> -->
 
         <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 mb-6 sm:mb-8 space-y-4">

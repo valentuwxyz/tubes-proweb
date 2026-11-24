@@ -113,9 +113,6 @@ if ($result) {
         $availableRooms = ($roomsCol !== null) ? max(0, (int)($row[$roomsCol] ?? 0)) : 1;
         $rulesText = $hasRulesCol ? (string)($row['rules'] ?? '') : '';
         $campusName = $hasCampusCol ? trim((string)($row['campus_name'] ?? '')) : '';
-        if ($campusName === '') {
-            $campusName = 'USU';
-        }
         $pdamText = $hasPdamCol ? trim((string)($row['pdam'] ?? '')) : '';
         if ($pdamText === '') {
             $pdamText = 'Sudah Termasuk Biaya Kos';
@@ -158,6 +155,8 @@ if ($result) {
             $galleryList[] = 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=800&q=80';
         }
 
+        $defaultMapTarget = $campusName !== '' ? ('Kampus ' . $campusName) : ($cleanAddress !== '' ? $cleanAddress : 'Indonesia');
+
         $kosList[] = [
             'id' => (int)$row['id'],
             'name' => $row['name'],
@@ -177,7 +176,7 @@ if ($result) {
             'rules' => $rulesText,
             'images' => $galleryList,
             'facilities' => array_values($facilitiesArray),
-            'mapQuery' => ($row['map_query'] ?: $cleanAddress) ?: ('Kampus ' . $campusName),
+            'mapQuery' => ($row['map_query'] ?: $cleanAddress) ?: $defaultMapTarget,
             'ownerId' => $ownerId,
             'ownerName' => $ownerName,
             'ownerRole' => $ownerRole,
@@ -381,29 +380,49 @@ if ($user && is_array($user)) {
                             type="text"
                             id="campusSearchInput"
                             oninput="updateCampusSearch(this.value)"
-                            placeholder="Cari nama kampus (USU, Unimed, Polmed...), nama kos, atau pemilik..."
+                            placeholder="Cari nama kampus, nama kos, alamat, atau pemilik..."
                             class="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none"
                         >
                     </div>
 
-                    <div class="md:col-span-4">
-                        <select
-                            id="campusSelectFilter"
-                            onchange="setCampusDropdownFilter(this.value)"
-                            class="w-full px-3.5 py-2 text-xs font-bold text-slate-700 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                    <div class="md:col-span-4 relative" id="multiCampusDropdownWrapper">
+                        <button
+                            type="button"
+                            id="multiCampusToggleBtn"
+                            onclick="toggleMultiCampusDropdown(event)"
+                            class="w-full px-3.5 py-2 text-xs font-bold text-slate-700 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none flex items-center justify-between gap-2 transition cursor-pointer"
                         >
-                            <option value="All">Semua Kampus Terdaftar</option>
-                            <?php foreach ($campusOptions as $cOpt): ?>
-                                <option value="<?= htmlspecialchars($cOpt) ?>"><?= htmlspecialchars($cOpt) ?></option>
-                            <?php endforeach; ?>
-                        </select>
+                            <span id="multiCampusLabel" class="truncate text-left">Semua Kampus Terdaftar</span>
+                            <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 shrink-0"></i>
+                        </button>
+
+                        <div
+                            id="multiCampusDropdownPanel"
+                            class="hidden absolute left-0 right-0 mt-1.5 bg-white rounded-2xl shadow-xl border border-slate-200 p-2.5 z-30 max-h-60 overflow-y-auto text-xs space-y-1"
+                        >
+                            <?php if (empty($campusOptions)): ?>
+                                <p class="text-[11px] text-slate-400 px-2 py-1.5">Belum ada data kampus terdaftar.</p>
+                            <?php else: ?>
+                                <?php foreach ($campusOptions as $cOpt): ?>
+                                    <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl hover:bg-teal-50/60 cursor-pointer font-semibold text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            value="<?= htmlspecialchars($cOpt) ?>"
+                                            onchange="toggleSelectedCampus(this.value, this.checked)"
+                                            class="campus-multi-checkbox accent-teal-600 rounded"
+                                        >
+                                        <span class="truncate"><?= htmlspecialchars($cOpt) ?></span>
+                                    </label>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
                     </div>
 
                     <div class="md:col-span-2 flex justify-end">
                         <button
                             type="button"
                             onclick="resetAllFilters()"
-                            class="w-full px-3 py-2 text-xs font-bold text-slate-600 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 border border-slate-200 rounded-xl transition"
+                            class="w-full px-3 py-2 text-xs font-bold text-slate-600 hover:text-teal-700 bg-slate-100 hover:bg-teal-50 border border-slate-200 rounded-xl transition cursor-pointer"
                         >
                             <i class="fa-solid fa-rotate-left mr-1"></i> Reset
                         </button>
@@ -449,12 +468,12 @@ if ($user && is_array($user)) {
                                 <i class="fa-solid fa-map-location-dot text-teal-600"></i> Peta Lokasi Terpilih
                             </h3>
                             <span id="activeMapTitle" class="text-[11px] sm:text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-100 truncate max-w-[160px] sm:max-w-[220px]">
-                                Kampus Terpilih
+                                Lokasi Kos
                             </span>
                         </div>
                         <div class="map-container h-64 sm:h-80 lg:h-[420px] overflow-hidden rounded-xl bg-slate-100 relative">
                             <iframe id="mapFrame"
-                                src="https://www.google.com/maps?q=Universitas+Sumatera+Utara&output=embed"
+                                src="https://www.google.com/maps?q=Indonesia&output=embed"
                                 allowfullscreen=""
                                 loading="lazy">
                             </iframe>
@@ -494,11 +513,7 @@ if ($user && is_array($user)) {
                     <div class="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                         <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 pb-4">
                             <div>
-                                <div id="detailCampusBadgesWrap" class="flex flex-wrap items-center gap-1.5 mb-1">
-                                    <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                                        <i class="fa-solid fa-graduation-cap"></i> <span>USU</span>
-                                    </span>
-                                </div>
+                                <div id="detailCampusBadgesWrap" class="flex flex-wrap items-center gap-1.5 mb-1"></div>
                                 <h1 id="detailTitle" class="text-xl sm:text-2xl font-extrabold text-slate-900">Nama Kos</h1>
                                 <p id="detailAddress" class="text-xs text-slate-500 mt-1 flex items-center gap-1">
                                     <i class="fa-solid fa-location-dot text-teal-600"></i>
@@ -707,7 +722,7 @@ if ($user && is_array($user)) {
                         <i class="fa-solid fa-magnifying-glass"></i>
                     </div>
                     <h3 class="font-bold text-base mb-2">1. Cari Kampus & Filter Kamar</h3>
-                    <p class="text-xs text-slate-500 leading-relaxed">Cari nama kampus tujuan (USU, Unimed, Polmed, dll.), tipe gender, dan batas tarif bulanan.</p>
+                    <p class="text-xs text-slate-500 leading-relaxed">Cari nama kampus tujuan, pilih satu atau beberapa kampus, tipe gender, dan batas tarif bulanan.</p>
                 </div>
                 <div class="p-5 sm:p-6 rounded-2xl bg-slate-50 border border-slate-100">
                     <div class="w-12 h-12 bg-teal-100 text-teal-600 rounded-xl flex items-center justify-center mx-auto mb-4 text-xl font-bold">
@@ -739,19 +754,19 @@ if ($user && is_array($user)) {
                 <p class="text-slate-400 leading-relaxed">Platform pencarian tempat kos mahasiswa yang terhubung langsung dengan data pendaftaran pemilik.</p>
             </div>
             <div>
-                <h4 class="text-white font-bold mb-3">Kampus Populer</h4>
+                <h4 class="text-white font-bold mb-3">Jelajahi KosFind</h4>
                 <ul class="space-y-2">
-                    <li><a href="#" onclick="event.preventDefault(); quickFilterCampus('USU');" class="hover:text-white transition">Kos Sekitar Kampus USU</a></li>
-                    <li><a href="#" onclick="event.preventDefault(); quickFilterCampus('Unimed');" class="hover:text-white transition">Kos Sekitar Kampus Unimed</a></li>
-                    <li><a href="#" onclick="event.preventDefault(); quickFilterCampus('Polmed');" class="hover:text-white transition">Kos Sekitar Kampus Polmed</a></li>
+                    <li><a href="#catalogPage" onclick="showCatalogPage(); resetAllFilters();" class="hover:text-white transition">Semua Kos Terdaftar</a></li>
+                    <li><a href="#cara-kerja" class="hover:text-white transition">Cara Mudah Menyewa</a></li>
+                    <li><a href="daftarkan-kos.php" class="hover:text-white transition">Daftarkan Kos Baru</a></li>
                 </ul>
             </div>
             <div>
                 <h4 class="text-white font-bold mb-3">Bantuan & Syarat</h4>
                 <ul class="space-y-2">
-                    <li><a href="#" class="hover:text-white transition">Panduan Penyewa</a></li>
+                    <li><a href="#cara-kerja" class="hover:text-white transition">Panduan Penyewa</a></li>
                     <li><a href="admin/index.php" class="hover:text-white transition">Kelola Data Kos (CMS)</a></li>
-                    <li><a href="#" class="hover:text-white transition">Kebijakan Privasi</a></li>
+                    <li><a href="#catalogPage" onclick="showCatalogPage();" class="hover:text-white transition">Kebijakan Privasi</a></li>
                 </ul>
             </div>
             <div>
@@ -769,7 +784,7 @@ if ($user && is_array($user)) {
         const kosData = <?= json_encode($kosList, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
         let currentTypeFilter = 'All';
-        let currentCampusDropdown = 'All';
+        let selectedCampusesFilter = [];
         let currentCampusSearch = '';
         let maxPriceFilter = 8000000;
         let activeCardId = kosData.length > 0 ? kosData[0].id : null;
@@ -793,8 +808,8 @@ if ($user && is_array($user)) {
 
         function renderCampusBadgesHtml(rawCampus) {
             const list = splitCampusList(rawCampus);
-            const items = list.length > 0 ? list : ['Kampus'];
-            return items.map(c => `
+            if (list.length === 0) return '';
+            return list.map(c => `
                 <span class="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
                     <i class="fa-solid fa-graduation-cap"></i> ${escapeHtml(c)}
                 </span>
@@ -831,16 +846,61 @@ if ($user && is_array($user)) {
             }
         }
 
+        function toggleMultiCampusDropdown(event) {
+            if (event) event.stopPropagation();
+            const panel = document.getElementById('multiCampusDropdownPanel');
+            if (!panel) return;
+            panel.classList.toggle('hidden');
+        }
+
+        function closeMultiCampusDropdown() {
+            const panel = document.getElementById('multiCampusDropdownPanel');
+            if (panel && !panel.classList.contains('hidden')) {
+                panel.classList.add('hidden');
+            }
+        }
+
+        function syncMultiCampusLabel() {
+            const labelEl = document.getElementById('multiCampusLabel');
+            if (!labelEl) return;
+            if (selectedCampusesFilter.length === 0) {
+                labelEl.innerText = 'Semua Kampus Terdaftar';
+            } else if (selectedCampusesFilter.length === 1) {
+                labelEl.innerText = selectedCampusesFilter[0];
+            } else {
+                labelEl.innerText = `${selectedCampusesFilter.length} Kampus Dipilih`;
+            }
+        }
+
+        function toggleSelectedCampus(campusName, isChecked) {
+            const clean = String(campusName || '').trim();
+            if (!clean) return;
+            if (isChecked) {
+                if (!selectedCampusesFilter.some(c => c.toLowerCase() === clean.toLowerCase())) {
+                    selectedCampusesFilter.push(clean);
+                }
+            } else {
+                selectedCampusesFilter = selectedCampusesFilter.filter(c => c.toLowerCase() !== clean.toLowerCase());
+            }
+            syncMultiCampusLabel();
+            renderCatalogListing();
+        }
+
         document.addEventListener('click', function (e) {
             const wrapper = document.getElementById('navMenuWrapper');
             if (wrapper && !wrapper.contains(e.target)) {
                 closeNavMenu();
+            }
+            const campusWrapper = document.getElementById('multiCampusDropdownWrapper');
+            if (campusWrapper && !campusWrapper.contains(e.target)) {
+                closeMultiCampusDropdown();
             }
         });
 
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 closeNavMenu();
+                closeMultiCampusDropdown();
             }
         });
 
@@ -880,12 +940,14 @@ if ($user && is_array($user)) {
                 const matchType = currentTypeFilter === 'All' || item.type === currentTypeFilter;
                 const matchPrice = item.price <= maxPriceFilter;
                 const itemCampuses = splitCampusList(item.campusName).map(c => c.toLowerCase());
-                const matchDropdown = currentCampusDropdown === 'All' || itemCampuses.includes(currentCampusDropdown.toLowerCase());
+
+                const matchMultiCampus = selectedCampusesFilter.length === 0 ||
+                    selectedCampusesFilter.some(sel => itemCampuses.includes(sel.toLowerCase()));
 
                 const haystack = `${item.campusName || ''} ${item.name || ''} ${item.ownerName || ''} ${item.address || ''} ${item.distance || ''}`.toLowerCase();
                 const matchSearch = q === '' || haystack.includes(q);
 
-                return matchType && matchPrice && matchDropdown && matchSearch;
+                return matchType && matchPrice && matchMultiCampus && matchSearch;
             });
         }
 
@@ -895,9 +957,12 @@ if ($user && is_array($user)) {
             container.innerHTML = '';
 
             const filteredData = getFilteredKosData();
-            const campusHint = currentCampusSearch.trim() !== ''
-                ? ` untuk "${escapeHtml(currentCampusSearch.trim())}"`
-                : (currentCampusDropdown !== 'All' ? ` dekat ${escapeHtml(currentCampusDropdown)}` : '');
+            let campusHint = '';
+            if (currentCampusSearch.trim() !== '') {
+                campusHint = ` untuk "${escapeHtml(currentCampusSearch.trim())}"`;
+            } else if (selectedCampusesFilter.length > 0) {
+                campusHint = ` dekat ${escapeHtml(selectedCampusesFilter.join(', '))}`;
+            }
 
             const resultCountEl = document.getElementById('resultCount');
             if (resultCountEl) {
@@ -953,9 +1018,7 @@ if ($user && is_array($user)) {
                         <div>
                             <div class="flex items-start justify-between gap-2">
                                 <div class="min-w-0">
-                                    <div class="flex flex-wrap items-center gap-1 mb-1">
-                                        ${campusBadgesHtml}
-                                    </div>
+                                    ${campusBadgesHtml !== '' ? `<div class="flex flex-wrap items-center gap-1 mb-1">${campusBadgesHtml}</div>` : ''}
                                     <h3 class="font-bold text-slate-900 text-sm sm:text-base leading-snug">${safeName}</h3>
                                 </div>
                                 <div class="flex items-center gap-1 shrink-0">
@@ -1000,45 +1063,21 @@ if ($user && is_array($user)) {
             renderCatalogListing();
         }
 
-        function setCampusDropdownFilter(val) {
-            currentCampusDropdown = String(val || 'All');
-            renderCatalogListing();
-        }
-
-        function quickFilterCampus(campusLabel) {
-            showCatalogPage();
-            const selectEl = document.getElementById('campusSelectFilter');
-            const inputEl = document.getElementById('campusSearchInput');
-            if (selectEl) {
-                const matchedOpt = Array.from(selectEl.options).find(opt => opt.value.toLowerCase() === campusLabel.toLowerCase());
-                if (matchedOpt) {
-                    selectEl.value = matchedOpt.value;
-                    currentCampusDropdown = matchedOpt.value;
-                    if (inputEl) inputEl.value = '';
-                    currentCampusSearch = '';
-                } else {
-                    selectEl.value = 'All';
-                    currentCampusDropdown = 'All';
-                    if (inputEl) inputEl.value = campusLabel;
-                    currentCampusSearch = campusLabel;
-                }
-            }
-            renderCatalogListing();
-            document.getElementById('listingContainer')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-
         function resetAllFilters() {
             currentTypeFilter = 'All';
-            currentCampusDropdown = 'All';
+            selectedCampusesFilter = [];
             currentCampusSearch = '';
             maxPriceFilter = 8000000;
 
+            document.querySelectorAll('.campus-multi-checkbox').forEach(cb => {
+                cb.checked = false;
+            });
+            syncMultiCampusLabel();
+
             const searchEl = document.getElementById('campusSearchInput');
-            const selectEl = document.getElementById('campusSelectFilter');
             const rangeEl = document.getElementById('priceRange');
 
             if (searchEl) searchEl.value = '';
-            if (selectEl) selectEl.value = 'All';
             if (rangeEl) {
                 rangeEl.value = 8000000;
                 const priceLabelEl = document.getElementById('priceLabel');

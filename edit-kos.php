@@ -82,27 +82,13 @@ function normalizeGalleryList(array $kosRow, ?string $photoColumn, bool $hasGall
     return $list;
 }
 
-function normalizeCampusList(array $checkedCampuses, string $customCampusRaw): array
+function normalizeCampusInputs($campusInputs): array
 {
     $result = [];
-    foreach ($checkedCampuses as $item) {
-        $clean = trim((string)preg_replace('/\s+/', ' ', (string)$item));
-        if ($clean !== '') {
-            $exists = false;
-            foreach ($result as $existing) {
-                if (strcasecmp($existing, $clean) === 0) {
-                    $exists = true;
-                    break;
-                }
-            }
-            if (!$exists) {
-                $result[] = $clean;
-            }
-        }
-    }
+    $items = is_array($campusInputs) ? $campusInputs : [$campusInputs];
 
-    if ($customCampusRaw !== '') {
-        $parts = explode(',', $customCampusRaw);
+    foreach ($items as $rawItem) {
+        $parts = explode(',', (string)$rawItem);
         foreach ($parts as $part) {
             $clean = trim((string)preg_replace('/\s+/', ' ', $part));
             if ($clean !== '') {
@@ -124,16 +110,14 @@ function normalizeCampusList(array $checkedCampuses, string $customCampusRaw): a
 }
 
 $errorMsg = '';
-$presetCampuses = ['USU', 'Unimed', 'Polmed'];
 $electricityPresets = ['Token Sendiri', 'Sudah Termasuk Biaya Kos', 'Iuran Bulanan', 'Bayar Sendiri'];
 $pdamPresets = ['Sudah Termasuk Biaya Kos', 'Bayar Sendiri', 'Iuran Bulanan'];
 $securityPresets = ['CCTV 24 Jam', 'Penjaga Kos & CCTV', 'Gerbang Terkunci / Akses Kunci'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim((string)($_POST['name'] ?? ''));
-    $postedCampusList = isset($_POST['campus_list']) && is_array($_POST['campus_list']) ? $_POST['campus_list'] : [];
-    $campusCustom = trim((string)($_POST['campus_custom'] ?? ''));
-    $campusArr = normalizeCampusList($postedCampusList, $campusCustom);
+    $postedCampuses = $_POST['campuses'] ?? ($_POST['campus_name'] ?? []);
+    $campusArr = normalizeCampusInputs($postedCampuses);
     $campusName = implode(', ', $campusArr);
 
     $elecSelect = trim((string)($_POST['electricity_select'] ?? 'Token Sendiri'));
@@ -165,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($name === '' || $price <= 0) {
         $errorMsg = 'Nama kos dan tarif per bulan wajib diisi dengan benar.';
     } elseif ($hasCampusCol && $campusName === '') {
-        $errorMsg = 'Minimal satu nama kampus terdekat wajib dipilih atau diisi.';
+        $errorMsg = 'Minimal satu nama kampus terdekat wajib diisi.';
     }
 
     // Proses upload banyak foto kos jika dipilih dari galeri
@@ -385,34 +369,15 @@ $currentRules = $hasRulesCol ? (string)($kos['rules'] ?? '') : '';
 $currentGalleryList = normalizeGalleryList($kos, $photoCol, $hasGalleryCol);
 
 $currentCampus = $hasCampusCol ? trim((string)($kos['campus_name'] ?? '')) : '';
-if ($currentCampus === '') {
-    $currentCampus = 'USU';
-}
-$currentCampusParts = array_values(array_filter(array_map('trim', explode(',', $currentCampus))));
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $selCampusList = isset($_POST['campus_list']) && is_array($_POST['campus_list'])
-        ? array_map('strval', $_POST['campus_list'])
+    $formCampuses = isset($_POST['campuses']) && is_array($_POST['campuses'])
+        ? array_values(array_filter(array_map('strval', $_POST['campuses']), static fn($v) => trim($v) !== ''))
         : [];
-    $selCampusCustom = (string)($_POST['campus_custom'] ?? '');
 } else {
-    $selCampusList = [];
-    $customParts = [];
-    foreach ($currentCampusParts as $cPart) {
-        $matchedPreset = null;
-        foreach ($presetCampuses as $pCam) {
-            if (strcasecmp($cPart, $pCam) === 0) {
-                $matchedPreset = $pCam;
-                break;
-            }
-        }
-        if ($matchedPreset !== null) {
-            $selCampusList[] = $matchedPreset;
-        } else {
-            $customParts[] = $cPart;
-        }
-    }
-    $selCampusCustom = implode(', ', $customParts);
+    $formCampuses = normalizeCampusInputs($currentCampus);
+}
+if (empty($formCampuses)) {
+    $formCampuses = [''];
 }
 
 $currentElec = trim((string)($kos['electricity'] ?? ''));
@@ -510,27 +475,41 @@ $currentSecurity = $hasSecurityCol && trim((string)($kos['security'] ?? '')) !==
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
                 <div>
                     <label class="font-bold text-slate-700 block mb-1">Nama Kos *</label>
                     <input type="text" name="name" required value="<?= htmlspecialchars((string)($kos['name'] ?? '')) ?>"
                            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                 </div>
                 <div>
-                    <label class="font-bold text-slate-700 block mb-1">Nama Kampus Terdekat (Bisa lebih dari 1) *</label>
-                    <div class="flex flex-wrap gap-1.5">
-                        <?php foreach ($presetCampuses as $pCampus): ?>
-                            <?php $isChecked = in_array($pCampus, $selCampusList, true); ?>
-                            <label class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-teal-50/50 cursor-pointer font-semibold text-slate-700">
-                                <input type="checkbox" name="campus_list[]" value="<?= htmlspecialchars($pCampus) ?>" <?= $isChecked ? 'checked' : '' ?> class="accent-teal-600 rounded">
-                                <span><?= htmlspecialchars($pCampus) ?></span>
-                            </label>
+                    <div class="flex items-center justify-between gap-1.5 mb-1">
+                        <label class="font-bold text-slate-700">Nama Kampus Terdekat *</label>
+                        <button type="button" onclick="addCampusRow('editCampusInputsContainer')" class="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2 py-0.5 rounded-lg transition cursor-pointer">
+                            <i class="fa-solid fa-plus"></i> Tambah
+                        </button>
+                    </div>
+                    <div id="editCampusInputsContainer" class="space-y-2">
+                        <?php foreach ($formCampuses as $idx => $cVal): ?>
+                            <div class="campus-input-row flex items-center gap-1.5">
+                                <input
+                                    type="text"
+                                    name="campuses[]"
+                                    <?= $hasCampusCol && $idx === 0 ? 'required' : '' ?>
+                                    value="<?= htmlspecialchars($cVal) ?>"
+                                    placeholder="Nama kampus (bisa pisah koma)"
+                                    class="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                                >
+                                <button
+                                    type="button"
+                                    onclick="removeCampusRow(this, 'editCampusInputsContainer')"
+                                    title="Hapus baris kampus"
+                                    class="px-2.5 py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition cursor-pointer"
+                                >
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
                         <?php endforeach; ?>
                     </div>
-                    <input type="text" name="campus_custom"
-                        value="<?= htmlspecialchars($selCampusCustom) ?>"
-                        placeholder="Kampus lain / tambahan (pisahkan koma jika >1)"
-                        class="mt-2 w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="font-bold text-slate-700 block mb-1">Tipe Gender *</label>
@@ -565,7 +544,7 @@ $currentSecurity = $hasSecurityCol && trim((string)($kos['security'] ?? '')) !==
             <div>
                 <label class="font-bold text-slate-700 block mb-1">Alamat Lengkap</label>
                 <input type="text" name="address" value="<?= htmlspecialchars($currentAddr) ?>"
-                       placeholder="Contoh: Jl. Dr. Mansyur No. 12, Medan"
+                       placeholder="Contoh: Jl. Ganesha No. 12"
                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
             </div>
 
@@ -654,6 +633,49 @@ $currentSecurity = $hasSecurityCol && trim((string)($kos['security'] ?? '')) !==
     </div>
 
     <script>
+        function addCampusRow(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            const row = document.createElement('div');
+            row.className = 'campus-input-row flex items-center gap-1.5';
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.name = 'campuses[]';
+            input.placeholder = 'Nama kampus lainnya...';
+            input.className = 'flex-1 px-3 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none';
+
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.title = 'Hapus baris kampus';
+            delBtn.className = 'px-2.5 py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition cursor-pointer';
+            delBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+            delBtn.onclick = function () {
+                removeCampusRow(delBtn, containerId);
+            };
+
+            row.appendChild(input);
+            row.appendChild(delBtn);
+            container.appendChild(row);
+            input.focus();
+        }
+
+        function removeCampusRow(btn, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            const rows = container.querySelectorAll('.campus-input-row');
+            const row = btn.closest('.campus-input-row');
+            if (rows.length <= 1) {
+                const inp = row ? row.querySelector('input') : null;
+                if (inp) inp.value = '';
+                return;
+            }
+            if (row) row.remove();
+            const firstInput = container.querySelector('.campus-input-row input');
+            if (firstInput) firstInput.required = true;
+        }
+
         function toggleCustomInput(selectId, customInputId) {
             const sel = document.getElementById(selectId);
             const customInput = document.getElementById(customInputId);

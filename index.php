@@ -359,22 +359,7 @@ if ($user && is_array($user)) {
     </header>
 
     <!-- CONTAINER TAMPILAN KATALOG (PAGE 1) -->
-    <!-- <div id="catalogPage" class="flex-1 w-full">
-        <section class="bg-gradient-to-br from-teal-950 via-teal-900 to-slate-900 text-white py-10 sm:py-14 px-4 relative overflow-hidden">
-            <div class="absolute inset-0 opacity-10 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px]"></div>
-            <div class="max-w-4xl mx-auto text-center space-y-3 sm:space-y-4 relative z-10">
-                <span class="bg-teal-500/20 text-teal-300 text-[11px] sm:text-xs font-semibold px-3 py-1 rounded-full border border-teal-500/30 inline-block">
-                    <i class="fa-solid fa-graduation-cap mr-1"></i> Terhubung Langsung dengan Data Kampus Pilihan Pemilik
-                </span>
-                <h1 class="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-tight">
-                    Cari & Sewa Kos Sekitar Kampusmu<br><span class="text-teal-400">Lengkap dengan Peta & Detail Transparan</span>
-                </h1>
-                <p class="text-slate-300 text-xs sm:text-base max-w-2xl mx-auto leading-relaxed">
-                    Cari kos berdasarkan nama kampus seperti USU, Unimed, Polmed, atau kampus lain yang sudah didaftarkan pemilik.
-                </p>
-            </div>
-        </section> -->
-
+    <div id="catalogPage" class="flex-1 w-full">
         <main class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8">
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 mb-6 sm:mb-8 space-y-4">
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
@@ -834,7 +819,10 @@ if ($user && is_array($user)) {
             const priceRangeEl = document.getElementById('priceRange');
             if (priceRangeEl) {
                 maxPriceFilter = parseInt(priceRangeEl.value, 10) || 8000000;
-                document.getElementById('priceLabel').innerText = "Rp " + maxPriceFilter.toLocaleString('id-ID');
+                const priceLabelEl = document.getElementById('priceLabel');
+                if (priceLabelEl) {
+                    priceLabelEl.innerText = "Rp " + maxPriceFilter.toLocaleString('id-ID');
+                }
             }
 
             renderCatalogListing();
@@ -874,6 +862,7 @@ if ($user && is_array($user)) {
 
         function renderCatalogListing() {
             const container = document.getElementById('listingContainer');
+            if (!container) return;
             container.innerHTML = '';
 
             const filteredData = getFilteredKosData();
@@ -881,7 +870,10 @@ if ($user && is_array($user)) {
                 ? ` untuk "${escapeHtml(currentCampusSearch.trim())}"`
                 : (currentCampusDropdown !== 'All' ? ` dekat ${escapeHtml(currentCampusDropdown)}` : '');
 
-            document.getElementById('resultCount').innerHTML = `Menampilkan ${filteredData.length} tempat kos${campusHint}`;
+            const resultCountEl = document.getElementById('resultCount');
+            if (resultCountEl) {
+                resultCountEl.innerHTML = `Menampilkan ${filteredData.length} tempat kos${campusHint}`;
+            }
 
             if (filteredData.length === 0) {
                 container.innerHTML = `
@@ -1021,15 +1013,24 @@ if ($user && is_array($user)) {
             if (selectEl) selectEl.value = 'All';
             if (rangeEl) {
                 rangeEl.value = 8000000;
-                document.getElementById('priceLabel').innerText = "Rp 8.000.000";
+                const priceLabelEl = document.getElementById('priceLabel');
+                if (priceLabelEl) {
+                    priceLabelEl.innerText = "Rp 8.000.000";
+                }
             }
 
             setFilterType('All');
         }
 
         function updateCatalogMap(title, query) {
-            document.getElementById('mapFrame').src = `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed`;
-            document.getElementById('activeMapTitle').innerText = title;
+            const mapFrame = document.getElementById('mapFrame');
+            const mapTitle = document.getElementById('activeMapTitle');
+            if (mapFrame) {
+                mapFrame.src = `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed`;
+            }
+            if (mapTitle) {
+                mapTitle.innerText = title;
+            }
         }
 
         function setFilterType(type) {
@@ -1046,7 +1047,10 @@ if ($user && is_array($user)) {
 
         function updatePriceFilter(value) {
             maxPriceFilter = parseInt(value, 10);
-            document.getElementById('priceLabel').innerText = "Rp " + maxPriceFilter.toLocaleString('id-ID');
+            const priceLabelEl = document.getElementById('priceLabel');
+            if (priceLabelEl) {
+                priceLabelEl.innerText = "Rp " + maxPriceFilter.toLocaleString('id-ID');
+            }
             renderCatalogListing();
         }
 
@@ -1108,10 +1112,14 @@ if ($user && is_array($user)) {
             selectedKosForDetail = kos;
 
             const campusLabel = kos.campusName || 'Kampus';
-            document.getElementById('detailBreadcrumbCampus').innerText = campusLabel;
-            document.getElementById('detailBreadcrumbTitle').innerText = kos.name;
-            document.getElementById('detailCampusText').innerText = campusLabel;
-            document.getElementById('detailTitle').innerText = kos.name;
+            const bcCampus = document.getElementById('detailBreadcrumbCampus');
+            const bcTitle = document.getElementById('detailBreadcrumbTitle');
+            const campusText = document.getElementById('detailCampusText');
+            const titleEl = document.getElementById('detailTitle');
+            if (bcCampus) bcCampus.innerText = campusLabel;
+            if (bcTitle) bcTitle.innerText = kos.name;
+            if (campusText) campusText.innerText = campusLabel;
+            if (titleEl) titleEl.innerText = kos.name;
 
             renderOwnerProfileInDetail(kos);
 
@@ -1139,40 +1147,55 @@ if ($user && is_array($user)) {
                 }
             }
 
-            document.getElementById('detailRating').innerText = kos.rating;
-            document.getElementById('detailBadgeType').innerText = kos.type;
-            document.getElementById('detailSpecSize').innerText = kos.size;
-            document.getElementById('detailSpecElectricity').innerText = kos.electricity;
-            document.getElementById('detailSpecPdam').innerText = kos.pdam || 'Sudah Termasuk Biaya Kos';
-            document.getElementById('detailSpecSecurity').innerText = kos.security || 'CCTV 24 Jam';
-            document.getElementById('detailSpecDistance').innerText = kos.distance;
-            document.getElementById('detailDescription').innerText = kos.description;
-            document.getElementById('detailPrice').innerText = kos.priceFormatted;
+            const ratingEl = document.getElementById('detailRating');
+            const badgeTypeEl = document.getElementById('detailBadgeType');
+            const specSizeEl = document.getElementById('detailSpecSize');
+            const specElecEl = document.getElementById('detailSpecElectricity');
+            const specPdamEl = document.getElementById('detailSpecPdam');
+            const specSecEl = document.getElementById('detailSpecSecurity');
+            const specDistEl = document.getElementById('detailSpecDistance');
+            const descEl = document.getElementById('detailDescription');
+            const priceEl = document.getElementById('detailPrice');
+
+            if (ratingEl) ratingEl.innerText = kos.rating;
+            if (badgeTypeEl) badgeTypeEl.innerText = kos.type;
+            if (specSizeEl) specSizeEl.innerText = kos.size;
+            if (specElecEl) specElecEl.innerText = kos.electricity;
+            if (specPdamEl) specPdamEl.innerText = kos.pdam || 'Sudah Termasuk Biaya Kos';
+            if (specSecEl) specSecEl.innerText = kos.security || 'CCTV 24 Jam';
+            if (specDistEl) specDistEl.innerText = kos.distance;
+            if (descEl) descEl.innerText = kos.description;
+            if (priceEl) priceEl.innerText = kos.priceFormatted;
 
             const images = Array.isArray(kos.images) && kos.images.length > 0 ? kos.images : ['https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=800&q=80'];
-            document.getElementById('detailMainImage').src = images[0];
+            const mainImgEl = document.getElementById('detailMainImage');
+            if (mainImgEl) mainImgEl.src = images[0];
             const thumbsContainer = document.getElementById('detailGalleryThumbs');
-            thumbsContainer.innerHTML = '';
-            images.forEach((imgUrl, index) => {
-                const thumb = document.createElement('img');
-                thumb.src = imgUrl;
-                thumb.alt = `${kos.name} foto ${index + 1}`;
-                thumb.className = `h-14 sm:h-16 w-full object-cover rounded-lg cursor-pointer border-2 transition ${index === 0 ? 'border-teal-600' : 'border-transparent hover:border-slate-300'}`;
-                thumb.onclick = () => {
-                    document.getElementById('detailMainImage').src = imgUrl;
-                    thumbsContainer.querySelectorAll('img').forEach((el, idx) => {
-                        el.className = `h-14 sm:h-16 w-full object-cover rounded-lg cursor-pointer border-2 transition ${idx === index ? 'border-teal-600' : 'border-transparent hover:border-slate-300'}`;
-                    });
-                };
-                thumbsContainer.appendChild(thumb);
-            });
+            if (thumbsContainer) {
+                thumbsContainer.innerHTML = '';
+                images.forEach((imgUrl, index) => {
+                    const thumb = document.createElement('img');
+                    thumb.src = imgUrl;
+                    thumb.alt = `${kos.name} foto ${index + 1}`;
+                    thumb.className = `h-14 sm:h-16 w-full object-cover rounded-lg cursor-pointer border-2 transition ${index === 0 ? 'border-teal-600' : 'border-transparent hover:border-slate-300'}`;
+                    thumb.onclick = () => {
+                        if (mainImgEl) mainImgEl.src = imgUrl;
+                        thumbsContainer.querySelectorAll('img').forEach((el, idx) => {
+                            el.className = `h-14 sm:h-16 w-full object-cover rounded-lg cursor-pointer border-2 transition ${idx === index ? 'border-teal-600' : 'border-transparent hover:border-slate-300'}`;
+                        });
+                    };
+                    thumbsContainer.appendChild(thumb);
+                });
+            }
 
             const facContainer = document.getElementById('detailFacilitiesGrid');
-            facContainer.innerHTML = kos.facilities.map(f => `
-                <div class="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs font-medium text-slate-700">
-                    <i class="fa-solid fa-circle-check text-teal-600 shrink-0"></i> <span>${escapeHtml(f)}</span>
-                </div>
-            `).join('');
+            if (facContainer) {
+                facContainer.innerHTML = kos.facilities.map(f => `
+                    <div class="flex items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100 text-xs font-medium text-slate-700">
+                        <i class="fa-solid fa-circle-check text-teal-600 shrink-0"></i> <span>${escapeHtml(f)}</span>
+                    </div>
+                `).join('');
+            }
 
             const rulesListEl = document.getElementById('detailRulesList');
             const customRules = String(kos.rules || '')
@@ -1197,56 +1220,69 @@ if ($user && is_array($user)) {
                 `).join('');
             }
 
-            document.getElementById('detailMapFrame').src = `https://www.google.com/maps?q=${encodeURIComponent(kos.mapQuery)}&output=embed`;
-
-            document.getElementById('reviewKosId').value = kos.id;
-            const reviews = Array.isArray(kos.reviews) ? kos.reviews : [];
-            document.getElementById('detailReviewCount').innerText = `${reviews.length} Ulasan`;
-
-            const reviewsContainer = document.getElementById('detailReviewsList');
-            if (reviews.length === 0) {
-                reviewsContainer.innerHTML = `
-                    <div class="text-center py-6 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400">
-                        Belum ada ulasan untuk kos ini. Jadilah yang pertama memberikan ulasan!
-                    </div>
-                `;
-            } else {
-                reviewsContainer.innerHTML = reviews.map(rev => {
-                    const stars = Array.from({ length: 5 }, (_, idx) =>
-                        `<i class="fa-${idx < rev.rating ? 'solid' : 'regular'} fa-star text-amber-400"></i>`
-                    ).join('');
-                    return `
-                        <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
-                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-bold text-xs text-slate-900">${escapeHtml(rev.reviewerName)}</span>
-                                    <span class="text-[11px]">${stars} (${escapeHtml(rev.rating)}/5)</span>
-                                </div>
-                                <span class="text-[11px] text-slate-400">${escapeHtml(rev.createdAt || '')}</span>
-                            </div>
-                            <p class="text-xs text-slate-600 leading-relaxed">${escapeHtml(rev.comment)}</p>
-                        </div>
-                    `;
-                }).join('');
+            const detailMapEl = document.getElementById('detailMapFrame');
+            if (detailMapEl) {
+                detailMapEl.src = `https://www.google.com/maps?q=${encodeURIComponent(kos.mapQuery)}&output=embed`;
             }
 
-            document.getElementById('rentalDuration').value = "1";
+            const reviewKosIdEl = document.getElementById('reviewKosId');
+            if (reviewKosIdEl) reviewKosIdEl.value = kos.id;
+            const reviews = Array.isArray(kos.reviews) ? kos.reviews : [];
+            const reviewCountEl = document.getElementById('detailReviewCount');
+            if (reviewCountEl) reviewCountEl.innerText = `${reviews.length} Ulasan`;
+
+            const reviewsContainer = document.getElementById('detailReviewsList');
+            if (reviewsContainer) {
+                if (reviews.length === 0) {
+                    reviewsContainer.innerHTML = `
+                        <div class="text-center py-6 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400">
+                            Belum ada ulasan untuk kos ini. Jadilah yang pertama memberikan ulasan!
+                        </div>
+                    `;
+                } else {
+                    reviewsContainer.innerHTML = reviews.map(rev => {
+                        const stars = Array.from({ length: 5 }, (_, idx) =>
+                            `<i class="fa-${idx < rev.rating ? 'solid' : 'regular'} fa-star text-amber-400"></i>`
+                        ).join('');
+                        return `
+                            <div class="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1.5">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-bold text-xs text-slate-900">${escapeHtml(rev.reviewerName)}</span>
+                                        <span class="text-[11px]">${stars} (${escapeHtml(rev.rating)}/5)</span>
+                                    </div>
+                                    <span class="text-[11px] text-slate-400">${escapeHtml(rev.createdAt || '')}</span>
+                                </div>
+                                <p class="text-xs text-slate-600 leading-relaxed">${escapeHtml(rev.comment)}</p>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            const durationEl = document.getElementById('rentalDuration');
+            if (durationEl) durationEl.value = "1";
             calculateTotalPrice();
 
-            document.getElementById('catalogPage').classList.add('hidden');
-            document.getElementById('detailPage').classList.remove('hidden');
+            const catalogEl = document.getElementById('catalogPage');
+            const detailEl = document.getElementById('detailPage');
+            if (catalogEl) catalogEl.classList.add('hidden');
+            if (detailEl) detailEl.classList.remove('hidden');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function showCatalogPage() {
-            document.getElementById('detailPage').classList.add('hidden');
-            document.getElementById('catalogPage').classList.remove('hidden');
+            const detailEl = document.getElementById('detailPage');
+            const catalogEl = document.getElementById('catalogPage');
+            if (detailEl) detailEl.classList.add('hidden');
+            if (catalogEl) catalogEl.classList.remove('hidden');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function calculateTotalPrice() {
             if (!selectedKosForDetail) return;
-            const duration = parseInt(document.getElementById('rentalDuration').value, 10);
+            const durationEl = document.getElementById('rentalDuration');
+            const duration = parseInt(durationEl ? durationEl.value : '1', 10);
             let monthlyPrice = selectedKosForDetail.price;
             let discountPercentage = 0;
 
@@ -1257,7 +1293,10 @@ if ($user && is_array($user)) {
             const totalBeforeDiscount = monthlyPrice * duration;
             const finalTotal = totalBeforeDiscount * (1 - discountPercentage);
 
-            document.getElementById('calculatedTotal').innerText = "Rp " + finalTotal.toLocaleString('id-ID');
+            const calcEl = document.getElementById('calculatedTotal');
+            if (calcEl) {
+                calcEl.innerText = "Rp " + finalTotal.toLocaleString('id-ID');
+            }
             syncDirectBookingLink();
         }
 
@@ -1274,8 +1313,8 @@ if ($user && is_array($user)) {
 
         function bookViaWhatsApp() {
             if (!selectedKosForDetail) return;
-            const duration = document.getElementById('rentalDuration').value;
-            const totalText = document.getElementById('calculatedTotal').innerText;
+            const duration = document.getElementById('rentalDuration')?.value || '1';
+            const totalText = document.getElementById('calculatedTotal')?.innerText || '';
             const phone = formatWhatsAppNumber(selectedKosForDetail.ownerWhatsapp);
 
             const message = `Halo ${selectedKosForDetail.ownerName || 'Pemilik'}, saya tertarik untuk menyewa kos di *${selectedKosForDetail.name}* (${selectedKosForDetail.campusName || 'Kampus'}) melalui KosFind.\n\n` +

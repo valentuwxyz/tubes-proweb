@@ -1,0 +1,15 @@
+# Abaikan semua file dan folder terlebih dahulu
+*
+
+# Izinkan kembali folder dan file yang dipilih
+!.gitignore
+!admin/
+!admin/**
+!config/
+!config/**
+!database/
+!database/**
+!uploads/
+!uploads/**
+!index.php
+!style.css

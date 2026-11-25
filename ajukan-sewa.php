@@ -3,6 +3,34 @@ require_once 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/notifications.php';
 
+function hitungEstimasiSewaDiskon(int $hargaBulanan, int $durasiBulan): int
+{
+    $durasiValid = in_array($durasiBulan, [1, 3, 6, 12], true) ? $durasiBulan : 1;
+    $diskon = 0.0;
+    if ($durasiValid === 3) {
+        $diskon = 0.02;
+    } elseif ($durasiValid === 6) {
+        $diskon = 0.05;
+    } elseif ($durasiValid === 12) {
+        $diskon = 0.10;
+    }
+    return (int)round(($hargaBulanan * $durasiValid) * (1 - $diskon));
+}
+
+function labelDiskonDurasi(int $durasiBulan): string
+{
+    if ($durasiBulan === 3) {
+        return '3 Bulan (Hemat 2%)';
+    }
+    if ($durasiBulan === 6) {
+        return '6 Bulan (Hemat 5%)';
+    }
+    if ($durasiBulan === 12) {
+        return '12 Bulan / 1 Tahun (Diskon 10%)';
+    }
+    return '1 Bulan (Normal)';
+}
+
 $user = currentUser();
 $error = '';
 $success = '';
@@ -27,7 +55,8 @@ if (!$kos) {
 }
 
 $monthlyPrice = (int)$kos['price'];
-$estimatedTotal = $monthlyPrice * $duration;
+$estimatedTotal = hitungEstimasiSewaDiskon($monthlyPrice, $duration);
+$checkinDate = date('Y-m-d');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $tenantName = trim($_POST['tenant_name'] ?? ($user['name'] ?? ''));
@@ -36,9 +65,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!in_array($duration, [1, 3, 6, 12], true)) {
         $duration = 1;
     }
-    $checkinDate = trim($_POST['checkin_date'] ?? '');
-    $checkinDate = ($checkinDate !== '') ? $checkinDate : date('Y-m-d');
-    $estimatedTotal = $monthlyPrice * $duration;
+    $rawCheckin = trim($_POST['checkin_date'] ?? '');
+    $checkinDate = ($rawCheckin !== '') ? $rawCheckin : date('Y-m-d');
+    $estimatedTotal = hitungEstimasiSewaDiskon($monthlyPrice, $duration);
     $userId = $user ? (int)$user['id'] : null;
 
     if ($tenantName === '' || $tenantPhone === '') {
@@ -142,22 +171,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="font-bold text-slate-700 block mb-1">Durasi Sewa</label>
-                        <select name="duration_months" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none">
-                            <option value="1" <?= $duration === 1 ? 'selected' : '' ?>>1 Bulan</option>
-                            <option value="3" <?= $duration === 3 ? 'selected' : '' ?>>3 Bulan</option>
-                            <option value="6" <?= $duration === 6 ? 'selected' : '' ?>>6 Bulan</option>
-                            <option value="12" <?= $duration === 12 ? 'selected' : '' ?>>12 Bulan</option>
+                        <select id="durationSelect" name="duration_months" onchange="updateBookingEstimate()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                            <?php foreach ([1, 3, 6, 12] as $optDur): ?>
+                                <option value="<?= $optDur ?>" <?= $duration === $optDur ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars(labelDiskonDurasi($optDur)) ?>
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div>
                         <label class="font-bold text-slate-700 block mb-1">Rencana Masuk</label>
-                        <input type="date" name="checkin_date" value="<?= date('Y-m-d') ?>" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                        <input type="date" name="checkin_date" value="<?= htmlspecialchars($checkinDate) ?>" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                     </div>
                 </div>
 
                 <div class="p-3.5 rounded-xl bg-teal-50 border border-teal-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                    <span class="font-bold text-teal-900">Estimasi Biaya (<?= $duration ?> bln):</span>
-                    <span class="text-sm sm:text-base font-black text-teal-700">Rp <?= number_format($estimatedTotal, 0, ',', '.') ?></span>
+                    <span id="estimateLabel" class="font-bold text-teal-900">Estimasi Biaya (<?= $duration ?> bln):</span>
+                    <span id="estimateAmount" class="text-sm sm:text-base font-black text-teal-700">Rp <?= number_format($estimatedTotal, 0, ',', '.') ?></span>
                 </div>
 
                 <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-xl shadow-sm transition">
@@ -166,5 +196,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
         </div>
     </div>
+
+    <script>
+        const monthlyKosPrice = <?= (int)$monthlyPrice ?>;
+
+        function hitungEstimasiDiskonClient(hargaBulanan, durasiBulan) {
+            const durasi = parseInt(durasiBulan, 10) || 1;
+            let diskon = 0;
+            if (durasi === 3) diskon = 0.02;
+            else if (durasi === 6) diskon = 0.05;
+            else if (durasi === 12) diskon = 0.10;
+            return Math.round((hargaBulanan * durasi) * (1 - diskon));
+        }
+
+        function updateBookingEstimate() {
+            const selectEl = document.getElementById('durationSelect');
+            const labelEl = document.getElementById('estimateLabel');
+            const amountEl = document.getElementById('estimateAmount');
+            const durasi = parseInt(selectEl ? selectEl.value : '1', 10) || 1;
+            const total = hitungEstimasiDiskonClient(monthlyKosPrice, durasi);
+
+            if (labelEl) {
+                labelEl.textContent = `Estimasi Biaya (${durasi} bln):`;
+            }
+            if (amountEl) {
+                amountEl.textContent = 'Rp ' + total.toLocaleString('id-ID');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', updateBookingEstimate);
+    </script>
 </body>
 </html>

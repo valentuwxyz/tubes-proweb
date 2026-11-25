@@ -74,6 +74,40 @@ if ($tblUsersRes && mysqli_num_rows($tblUsersRes) > 0) {
     }
 }
 
+// Sinkronkan data profil terbaru (termasuk foto avatar) langsung dari tabel users
+if ($user && !empty($user['id']) && $hasUsersTable) {
+    $uidNav = (int)$user['id'];
+    $selectUserCols = ['name', 'role'];
+    if (in_array('avatar', $userCols, true)) {
+        $selectUserCols[] = 'avatar';
+    } elseif (in_array('photo', $userCols, true)) {
+        $selectUserCols[] = 'photo';
+    } elseif (in_array('profile_photo', $userCols, true)) {
+        $selectUserCols[] = 'profile_photo';
+    }
+
+    $sqlNavUser = "SELECT " . implode(', ', $selectUserCols) . " FROM users WHERE id = ? LIMIT 1";
+    $stmtNavUser = mysqli_prepare($conn, $sqlNavUser);
+    if ($stmtNavUser) {
+        mysqli_stmt_bind_param($stmtNavUser, "i", $uidNav);
+        mysqli_stmt_execute($stmtNavUser);
+        $resNavUser = mysqli_stmt_get_result($stmtNavUser);
+        if ($resNavUser && ($dbNavUser = mysqli_fetch_assoc($resNavUser))) {
+            $fetchedAvatar = trim((string)($dbNavUser['avatar'] ?? $dbNavUser['photo'] ?? $dbNavUser['profile_photo'] ?? ''));
+            if ($fetchedAvatar !== '') {
+                $user['avatar'] = $fetchedAvatar;
+                $_SESSION['avatar'] = $fetchedAvatar;
+            }
+            if (!empty($dbNavUser['name'])) {
+                $user['name'] = $dbNavUser['name'];
+            }
+            if (!empty($dbNavUser['role'])) {
+                $user['role'] = $dbNavUser['role'];
+            }
+        }
+    }
+}
+
 // Ambil data kos dari database kosfind (sertakan data pemilik jika tersedia)
 if ($hasOwnerIdCol && $hasUsersTable) {
     $query = "SELECT k.*, u.name AS owner_user_name, u.role AS owner_user_role" .
@@ -214,10 +248,17 @@ $avatarSrc = '';
 if ($user && is_array($user)) {
     $rawAvatar = trim((string)($user['avatar'] ?? $user['photo'] ?? $user['profile_photo'] ?? ($_SESSION['avatar'] ?? '')));
     if ($rawAvatar !== '') {
-        $sep = (strpos($rawAvatar, '?') !== false) ? '&' : '?';
-        $cleanLocalPath = __DIR__ . '/' . ltrim(explode('?', $rawAvatar)[0], '/');
-        $versionTag = is_file($cleanLocalPath) ? filemtime($cleanLocalPath) : time();
-        $avatarSrc = $rawAvatar . $sep . 'v=' . $versionTag;
+        $isFullUrl = preg_match('#^https?://#i', $rawAvatar) === 1;
+        $cleanPath = $isFullUrl ? $rawAvatar : ltrim($rawAvatar, '/');
+        $sep = (strpos($cleanPath, '?') !== false) ? '&' : '?';
+
+        if ($isFullUrl) {
+            $avatarSrc = $cleanPath . $sep . 'v=' . time();
+        } else {
+            $cleanLocalPath = __DIR__ . '/' . explode('?', $cleanPath)[0];
+            $versionTag = is_file($cleanLocalPath) ? filemtime($cleanLocalPath) : time();
+            $avatarSrc = $cleanPath . $sep . 'v=' . $versionTag;
+        }
     }
 }
 ?>

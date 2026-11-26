@@ -3,32 +3,15 @@ require_once 'config/db.php';
 require_once 'config/auth.php';
 require_once 'config/notifications.php';
 
-function hitungEstimasiSewaDiskon(int $hargaBulanan, int $durasiBulan): int
+function hitungEstimasiSewa(int $hargaBulanan, int $durasiBulan): int
 {
     $durasiValid = in_array($durasiBulan, [1, 3, 6, 12], true) ? $durasiBulan : 1;
-    $diskon = 0.0;
-    if ($durasiValid === 3) {
-        $diskon = 0.02;
-    } elseif ($durasiValid === 6) {
-        $diskon = 0.05;
-    } elseif ($durasiValid === 12) {
-        $diskon = 0.10;
-    }
-    return (int)round(($hargaBulanan * $durasiValid) * (1 - $diskon));
+    return max(0, $hargaBulanan) * $durasiValid;
 }
 
-function labelDiskonDurasi(int $durasiBulan): string
+function labelDurasiSewa(int $durasiBulan): string
 {
-    if ($durasiBulan === 3) {
-        return '3 Bulan (Hemat 2%)';
-    }
-    if ($durasiBulan === 6) {
-        return '6 Bulan (Hemat 5%)';
-    }
-    if ($durasiBulan === 12) {
-        return '12 Bulan / 1 Tahun (Diskon 10%)';
-    }
-    return '1 Bulan (Normal)';
+    return $durasiBulan === 12 ? '12 Bulan (1 Tahun)' : ($durasiBulan . ' Bulan');
 }
 
 $user = currentUser();
@@ -44,9 +27,11 @@ if (!in_array($duration, [1, 3, 6, 12], true)) {
 $kos = null;
 if ($kosId > 0) {
     $stmtKos = mysqli_prepare($conn, "SELECT * FROM kos WHERE id = ? LIMIT 1");
-    mysqli_stmt_bind_param($stmtKos, "i", $kosId);
-    mysqli_stmt_execute($stmtKos);
-    $kos = mysqli_fetch_assoc(mysqli_stmt_get_result($stmtKos));
+    if ($stmtKos) {
+        mysqli_stmt_bind_param($stmtKos, "i", $kosId);
+        mysqli_stmt_execute($stmtKos);
+        $kos = mysqli_fetch_assoc(mysqli_stmt_get_result($stmtKos));
+    }
 }
 
 if (!$kos) {
@@ -54,23 +39,29 @@ if (!$kos) {
     exit;
 }
 
-$monthlyPrice = (int)$kos['price'];
-$estimatedTotal = hitungEstimasiSewaDiskon($monthlyPrice, $duration);
+$monthlyPrice = (int)($kos['price'] ?? 0);
+$estimatedTotal = hitungEstimasiSewa($monthlyPrice, $duration);
 $checkinDate = date('Y-m-d');
+$tenantNameInput = (string)($user['name'] ?? '');
+$tenantPhoneInput = (string)($user['phone'] ?? '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tenantName = trim($_POST['tenant_name'] ?? ($user['name'] ?? ''));
-    $tenantPhone = preg_replace('/[^0-9]/', '', $_POST['tenant_phone'] ?? ($user['phone'] ?? ''));
-    $duration = (int)($_POST['duration_months'] ?? 1);
-    if (!in_array($duration, [1, 3, 6, 12], true)) {
-        $duration = 1;
-    }
-    $rawCheckin = trim($_POST['checkin_date'] ?? '');
-    $checkinDate = ($rawCheckin !== '') ? $rawCheckin : date('Y-m-d');
-    $estimatedTotal = hitungEstimasiSewaDiskon($monthlyPrice, $duration);
-    $userId = $user ? (int)$user['id'] : null;
+    $tenantNameInput = trim((string)($_POST['tenant_name'] ?? ($user['name'] ?? '')));
+    $tenantPhoneInput = trim((string)($_POST['tenant_phone'] ?? ($user['phone'] ?? '')));
+    $tenantPhoneClean = preg_replace('/[^0-9]/', '', $tenantPhoneInput);
 
-    if ($tenantName === '' || $tenantPhone === '') {
+    // Durasi dikunci sesuai pilihan awal yang dikirim ke form
+    $postedDuration = isset($_POST['duration_months']) ? (int)$_POST['duration_months'] : $duration;
+    if (in_array($postedDuration, [1, 3, 6, 12], true)) {
+        $duration = $postedDuration;
+    }
+
+    $rawCheckin = trim((string)($_POST['checkin_date'] ?? ''));
+    $checkinDate = ($rawCheckin !== '') ? $rawCheckin : date('Y-m-d');
+    $estimatedTotal = hitungEstimasiSewa($monthlyPrice, $duration);
+    $userId = ($user && !empty($user['id'])) ? (int)$user['id'] : null;
+
+    if ($tenantNameInput === '' || $tenantPhoneClean === '') {
         $error = "Nama pemesan dan nomor WhatsApp wajib diisi.";
     } else {
         $stmt = mysqli_prepare(
@@ -78,46 +69,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             "INSERT INTO bookings (kos_id, user_id, tenant_name, tenant_phone, duration_months, estimated_total, checkin_date, status)
              VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')"
         );
-        mysqli_stmt_bind_param(
-            $stmt,
-            "iissiis",
-            $kosId,
-            $userId,
-            $tenantName,
-            $tenantPhone,
-            $duration,
-            $estimatedTotal,
-            $checkinDate
-        );
-
-        if (mysqli_stmt_execute($stmt)) {
-            $newBookingId = (int)mysqli_insert_id($conn);
-            $ownerIdVal = isset($kos['owner_id']) ? (int)$kos['owner_id'] : null;
-
-            notifyNewBooking(
-                $conn,
-                $newBookingId,
+        if ($stmt) {
+            mysqli_stmt_bind_param(
+                $stmt,
+                "iissiis",
                 $kosId,
-                (string)($kos['name'] ?? 'KosFind'),
-                $tenantName,
+                $userId,
+                $tenantNameInput,
+                $tenantPhoneClean,
                 $duration,
                 $estimatedTotal,
-                $ownerIdVal > 0 ? $ownerIdVal : null
+                $checkinDate
             );
 
-            $success = "Pesanan kos berhasil dicatat! Notifikasi telah dikirim ke admin dan pemilik kos.";
+            if (mysqli_stmt_execute($stmt)) {
+                $newBookingId = (int)mysqli_insert_id($conn);
+                $ownerIdVal = isset($kos['owner_id']) ? (int)$kos['owner_id'] : null;
+
+                notifyNewBooking(
+                    $conn,
+                    $newBookingId,
+                    $kosId,
+                    (string)($kos['name'] ?? 'KosFind'),
+                    $tenantNameInput,
+                    $duration,
+                    $estimatedTotal,
+                    $ownerIdVal > 0 ? $ownerIdVal : null
+                );
+
+                $success = "Pesanan kos berhasil dicatat! Notifikasi telah dikirim ke admin dan pemilik kos.";
+            } else {
+                $error = "Gagal menyimpan pesanan: " . mysqli_error($conn);
+            }
         } else {
-            $error = "Gagal menyimpan pesanan: " . mysqli_error($conn);
+            $error = "Gagal menyiapkan query pesanan: " . mysqli_error($conn);
         }
     }
 }
+
+$durationLabel = labelDurasiSewa($duration);
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ajukan Sewa - <?= htmlspecialchars($kos['name']) ?></title>
+    <title>Ajukan Sewa - <?= htmlspecialchars((string)$kos['name']) ?></title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -139,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-8">
             <h1 class="text-lg sm:text-xl font-extrabold text-slate-900">Form Pemesanan Kos</h1>
             <p class="text-xs text-slate-500 mt-1 mb-5 leading-relaxed">
-                Properti: <strong class="text-slate-800"><?= htmlspecialchars($kos['name']) ?></strong> &bull;
+                Properti: <strong class="text-slate-800"><?= htmlspecialchars((string)$kos['name']) ?></strong> &bull;
                 Tarif: <strong class="text-teal-700">Rp <?= number_format($monthlyPrice, 0, ',', '.') ?>/bulan</strong>
             </p>
 
@@ -157,27 +154,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <form method="POST" class="space-y-4 text-xs">
                 <input type="hidden" name="kos_id" value="<?= $kosId ?>">
+                <input type="hidden" name="duration_months" value="<?= $duration ?>">
 
                 <div>
                     <label class="font-bold text-slate-700 block mb-1">Nama Lengkap Pemesan *</label>
-                    <input type="text" name="tenant_name" required value="<?= htmlspecialchars($user['name'] ?? '') ?>" placeholder="Nama mahasiswa / penyewa" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                    <input type="text" name="tenant_name" required value="<?= htmlspecialchars($tenantNameInput) ?>" placeholder="Nama mahasiswa / penyewa" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                 </div>
 
                 <div>
                     <label class="font-bold text-slate-700 block mb-1">No. WhatsApp Pemesan *</label>
-                    <input type="text" name="tenant_phone" required value="<?= htmlspecialchars($user['phone'] ?? '') ?>" placeholder="6281234567890" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
+                    <input type="text" name="tenant_phone" required value="<?= htmlspecialchars($tenantPhoneInput) ?>" placeholder="6281234567890" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none">
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="font-bold text-slate-700 block mb-1">Durasi Sewa</label>
-                        <select id="durationSelect" name="duration_months" onchange="updateBookingEstimate()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none">
-                            <?php foreach ([1, 3, 6, 12] as $optDur): ?>
-                                <option value="<?= $optDur ?>" <?= $duration === $optDur ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars(labelDiskonDurasi($optDur)) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <div class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-slate-700 font-semibold flex items-center justify-between cursor-not-allowed select-none" aria-readonly="true">
+                            <span><?= htmlspecialchars($durationLabel) ?></span>
+                        </div>
                     </div>
                     <div>
                         <label class="font-bold text-slate-700 block mb-1">Rencana Masuk</label>
@@ -186,8 +180,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="p-3.5 rounded-xl bg-teal-50 border border-teal-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                    <span id="estimateLabel" class="font-bold text-teal-900">Estimasi Biaya (<?= $duration ?> bln):</span>
-                    <span id="estimateAmount" class="text-sm sm:text-base font-black text-teal-700">Rp <?= number_format($estimatedTotal, 0, ',', '.') ?></span>
+                    <span class="font-bold text-teal-900">Estimasi Biaya (<?= $duration ?> bln):</span>
+                    <span class="text-sm sm:text-base font-black text-teal-700">Rp <?= number_format($estimatedTotal, 0, ',', '.') ?></span>
                 </div>
 
                 <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-xl shadow-sm transition">
@@ -196,35 +190,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
         </div>
     </div>
-
-    <script>
-        const monthlyKosPrice = <?= (int)$monthlyPrice ?>;
-
-        function hitungEstimasiDiskonClient(hargaBulanan, durasiBulan) {
-            const durasi = parseInt(durasiBulan, 10) || 1;
-            let diskon = 0;
-            if (durasi === 3) diskon = 0.02;
-            else if (durasi === 6) diskon = 0.05;
-            else if (durasi === 12) diskon = 0.10;
-            return Math.round((hargaBulanan * durasi) * (1 - diskon));
-        }
-
-        function updateBookingEstimate() {
-            const selectEl = document.getElementById('durationSelect');
-            const labelEl = document.getElementById('estimateLabel');
-            const amountEl = document.getElementById('estimateAmount');
-            const durasi = parseInt(selectEl ? selectEl.value : '1', 10) || 1;
-            const total = hitungEstimasiDiskonClient(monthlyKosPrice, durasi);
-
-            if (labelEl) {
-                labelEl.textContent = `Estimasi Biaya (${durasi} bln):`;
-            }
-            if (amountEl) {
-                amountEl.textContent = 'Rp ' + total.toLocaleString('id-ID');
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', updateBookingEstimate);
-    </script>
 </body>
 </html>
